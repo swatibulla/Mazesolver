@@ -178,6 +178,11 @@ body {
     .main-workspace-split {
         grid-template-columns: 1fr;
     }
+    .visualizer-area {
+        position: static;
+        max-height: none;
+        overflow-y: visible;
+    }
 }
 
 /* Sidebar & Cards */
@@ -410,6 +415,30 @@ select:focus {
     flex-direction: column;
     gap: 1.5rem;
     min-width: 0;
+    position: sticky;
+    top: 2rem;
+    max-height: calc(100vh - 4rem);
+    overflow-y: auto;
+    align-self: start;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.visualizer-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.visualizer-area::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.visualizer-area::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+
+.visualizer-area::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .canvas-viewport {
@@ -529,6 +558,12 @@ canvas {
     background: rgba(99, 102, 241, 0.15);
     border-color: rgba(99, 102, 241, 0.4);
     color: #a5b4fc;
+}
+
+.btn-icon.success {
+    background: rgba(16, 185, 129, 0.15) !important;
+    border-color: rgba(16, 185, 129, 0.4) !important;
+    color: var(--success) !important;
 }
 
 .btn-icon:disabled {

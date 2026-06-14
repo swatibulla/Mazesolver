@@ -1,0 +1,74 @@
+#include <stdio.h>
+
+#define ROWS 15
+#define COLS 15
+#define SIZE 1000
+
+typedef struct {
+    int row, col;
+} Position;
+
+int wall[ROWS][COLS][4];    // 0=top, 1=right, 2=bottom, 3=left
+int visited[ROWS][COLS];
+Position stack[SIZE];
+int top = -1;
+
+const int dr[4] = {-1, 0, 1, 0};
+const int dc[4] = {0, 1, 0, -1};
+
+void push(Position p)
+{
+    stack[++top] = p;
+}
+
+Position pop(void)
+{
+    return stack[top--];
+}
+
+int findPathDFS(void)
+{
+    push((Position){0, 0});
+
+    while (top >= 0)
+    {
+        Position p = pop();
+
+        if (visited[p.row][p.col])
+            continue;
+
+        visited[p.row][p.col] = 1;
+
+        if (p.row == ROWS - 1 && p.col == COLS - 1)
+            return 1;
+
+        for (int d = 0; d < 4; d++)
+        {
+            int nr = p.row + dr[d];
+            int nc = p.col + dc[d];
+
+            if (nr >= 0 && nr < ROWS &&
+                nc >= 0 && nc < COLS &&
+                !wall[p.row][p.col][d] &&
+                !visited[nr][nc])
+            {
+                push((Position){nr, nc});
+            }
+        }
+    }
+
+    return 0;
+}
+
+int main(void)
+{
+    /* Example: all walls are open (0) by default,
+       so a path exists from (0,0) to (14,14). */
+
+    if (findPathDFS())
+        printf("Path Found using DFS\n");
+    else
+        printf("No Path Found\n");
+
+    return 0;
+}

@@ -49,6 +49,7 @@ class MazeApp {
         this.isCancelled = false;
         this.stepDelay = 100; // in milliseconds
         this.isPaused = false;
+        this.currentCell = null;
         
         // Stats
         this.uniqueVisited = new Set();
@@ -92,6 +93,7 @@ class MazeApp {
         // Debugger Controls
         this.pauseBtn = document.getElementById('pauseBtn');
         this.stepBtn = document.getElementById('stepBtn');
+        this.copyBtn = document.getElementById('copyBtn');
     }
 
     bindEvents() {
@@ -121,11 +123,17 @@ class MazeApp {
             this.goBtn.blur();
             if (this.currentState === STATES.READY) {
                 this.startSolving();
+            } else if (this.currentState === STATES.DONE) {
+                this.resetSolver();
+                this.startSolving();
             }
         });
         
         // Algorithm selection change
         this.algoSelect.addEventListener('change', () => {
+            if (this.grid.length > 0) {
+                this.resetSolver();
+            }
             this.updateCodeDisplay();
         });
         
@@ -142,6 +150,14 @@ class MazeApp {
                 this.executeStep();
             }
         });
+        
+        // Copy button
+        if (this.copyBtn) {
+            this.copyBtn.addEventListener('click', () => {
+                this.copyBtn.blur();
+                this.copyCodeToClipboard();
+            });
+        }
         
         // Global space key handler to Pause/Resume
         window.addEventListener('keydown', (e) => {
@@ -200,7 +216,7 @@ class MazeApp {
                 
             case STATES.DONE:
                 this.generateBtn.disabled = false;
-                this.goBtn.disabled = true; // Need to regenerate to solve again
+                this.goBtn.disabled = false; // Rerun or change algo on same maze!
                 this.sizeSlider.disabled = false;
                 this.algoSelect.disabled = false;
                 if (this.pauseBtn) this.pauseBtn.disabled = true;
@@ -337,6 +353,23 @@ class MazeApp {
         
         // E badge
         ctx.fillText('E', offset + (cols - 0.5) * cellSize, offset + (rows - 0.5) * cellSize);
+        
+        // 5. Draw Active Cell Cursor
+        if (this.currentCell) {
+            const cx = offset + this.currentCell.c * cellSize + cellSize / 2;
+            const cy = offset + this.currentCell.r * cellSize + cellSize / 2;
+            const radius = cellSize * 0.22;
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#c084fc'; // Glowing medium purple/violet
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = Math.max(1.5, cellSize * 0.05);
+            ctx.shadowColor = '#c084fc';
+            ctx.shadowBlur = Math.max(4, cellSize * 0.15);
+            ctx.fill();
+            ctx.stroke();
+            ctx.shadowBlur = 0; // reset shadow
+        }
     }
 
     // Trigger Maze Generation (Recursive Backtracker)
@@ -453,20 +486,20 @@ class MazeApp {
         const parent = {};
         
         // Line 1: queue initialization
-        yield { type: 'line', line: 1, vars: { queue: [...queue], visited: new Set(visited) } };
+        yield { type: 'line', cell: { r: 0, c: 0 }, line: 1, vars: { queue: [...queue], visited: new Set(visited) } };
         // Line 2: visited initialization
-        yield { type: 'line', line: 2, vars: { queue: [...queue], visited: new Set(visited) } };
+        yield { type: 'line', cell: { r: 0, c: 0 }, line: 2, vars: { queue: [...queue], visited: new Set(visited) } };
         
         while (queue.length > 0) {
             // Line 3: while check
-            yield { type: 'line', line: 3, vars: { queue: [...queue], visited: new Set(visited) } };
+            yield { type: 'line', cell: queue[0], line: 3, vars: { queue: [...queue], visited: new Set(visited) } };
             
             const curr = queue.shift();
             // Line 4: pop cell
             yield { type: 'visit', cell: curr, line: 4, vars: { curr, queue: [...queue], visited: new Set(visited) } };
             
             // Line 5: check if target
-            yield { type: 'line', line: 5, vars: { curr, queue: [...queue], visited: new Set(visited) } };
+            yield { type: 'line', cell: curr, line: 5, vars: { curr, queue: [...queue], visited: new Set(visited) } };
             if (curr.r === this.rows - 1 && curr.c === this.cols - 1) {
                 // Line 6: target match, reconstruct path
                 const path = [];
@@ -491,22 +524,22 @@ class MazeApp {
             if (!cell.walls.left && c > 0) nexts.push({ r, c: c - 1 });
             
             // Line 8: loop neighbors
-            yield { type: 'line', line: 8, vars: { curr, queue: [...queue], visited: new Set(visited) } };
+            yield { type: 'line', cell: curr, line: 8, vars: { curr, queue: [...queue], visited: new Set(visited) } };
             
             for (const next of nexts) {
                 const key = `${next.r},${next.c}`;
                 
                 // Line 9: visited check
-                yield { type: 'line', line: 9, vars: { curr, next, queue: [...queue], visited: new Set(visited) } };
+                yield { type: 'line', cell: curr, next, line: 9, vars: { curr, next, queue: [...queue], visited: new Set(visited) } };
                 
                 if (!visited.has(key)) {
                     // Line 10: add to visited
                     visited.add(key);
-                    yield { type: 'line', line: 10, vars: { curr, next, queue: [...queue], visited: new Set(visited) } };
+                    yield { type: 'line', cell: curr, next, line: 10, vars: { curr, next, queue: [...queue], visited: new Set(visited) } };
                     
                     // Line 11: parent map
                     parent[key] = curr;
-                    yield { type: 'line', line: 11, vars: { curr, next, queue: [...queue], visited: new Set(visited) } };
+                    yield { type: 'line', cell: curr, next, line: 11, vars: { curr, next, queue: [...queue], visited: new Set(visited) } };
                     
                     // Line 12: push to queue
                     queue.push(next);
@@ -525,21 +558,21 @@ class MazeApp {
         const parent = {};
         
         // Line 1: stack init
-        yield { type: 'line', line: 1, vars: { stack: [...stack], visited: new Set(visited) } };
+        yield { type: 'line', cell: { r: 0, c: 0 }, line: 1, vars: { stack: [...stack], visited: new Set(visited) } };
         // Line 2: visited init
-        yield { type: 'line', line: 2, vars: { stack: [...stack], visited: new Set(visited) } };
+        yield { type: 'line', cell: { r: 0, c: 0 }, line: 2, vars: { stack: [...stack], visited: new Set(visited) } };
         
         while (stack.length > 0) {
             // Line 3: while check
-            yield { type: 'line', line: 3, vars: { stack: [...stack], visited: new Set(visited) } };
+            yield { type: 'line', cell: stack[stack.length - 1], line: 3, vars: { stack: [...stack], visited: new Set(visited) } };
             
             const curr = stack.pop();
             const key = `${curr.r},${curr.c}`;
             // Line 4: pop cell
-            yield { type: 'line', line: 4, vars: { curr, stack: [...stack], visited: new Set(visited) } };
+            yield { type: 'line', cell: curr, line: 4, vars: { curr, stack: [...stack], visited: new Set(visited) } };
             
             // Line 5: visited check
-            yield { type: 'line', line: 5, vars: { curr, stack: [...stack], visited: new Set(visited) } };
+            yield { type: 'line', cell: curr, line: 5, vars: { curr, stack: [...stack], visited: new Set(visited) } };
             if (visited.has(key)) continue;
             
             // Line 6: mark visited
@@ -547,7 +580,7 @@ class MazeApp {
             yield { type: 'visit', cell: curr, line: 6, vars: { curr, stack: [...stack], visited: new Set(visited) } };
             
             // Line 7: target check
-            yield { type: 'line', line: 7, vars: { curr, stack: [...stack], visited: new Set(visited) } };
+            yield { type: 'line', cell: curr, line: 7, vars: { curr, stack: [...stack], visited: new Set(visited) } };
             if (curr.r === this.rows - 1 && curr.c === this.cols - 1) {
                 // Line 8: target match, reconstruct
                 const path = [];
@@ -571,25 +604,19 @@ class MazeApp {
             if (!cell.walls.bottom && r < this.rows - 1) nexts.push({ r: r + 1, c });
             if (!cell.walls.left && c > 0) nexts.push({ r, c: c - 1 });
             
-            // Shuffle search directions to make it look organic
-            for (let i = nexts.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [nexts[i], nexts[j]] = [nexts[j], nexts[i]];
-            }
-            
             // Line 10: neighbors loop
-            yield { type: 'line', line: 10, vars: { curr, stack: [...stack], visited: new Set(visited) } };
+            yield { type: 'line', cell: curr, line: 10, vars: { curr, stack: [...stack], visited: new Set(visited) } };
             
             for (const next of nexts) {
                 const nKey = `${next.r},${next.c}`;
                 
                 // Line 11: visited check
-                yield { type: 'line', line: 11, vars: { curr, next, stack: [...stack], visited: new Set(visited) } };
+                yield { type: 'line', cell: curr, next, line: 11, vars: { curr, next, stack: [...stack], visited: new Set(visited) } };
                 
                 if (!visited.has(nKey)) {
                     // Line 12: parent mapping
                     parent[nKey] = curr;
-                    yield { type: 'line', line: 12, vars: { curr, next, stack: [...stack], visited: new Set(visited) } };
+                    yield { type: 'line', cell: curr, next, line: 12, vars: { curr, next, stack: [...stack], visited: new Set(visited) } };
                     
                     // Line 13: stack push
                     stack.push(next);
@@ -608,24 +635,24 @@ class MazeApp {
         const self = this;
         
         // Line 1: visited init
-        yield { type: 'line', line: 1, vars: { visited: new Set(visited), path: [...path] } };
+        yield { type: 'line', cell: { r: 0, c: 0 }, line: 1, vars: { visited: new Set(visited), path: [...path] } };
         // Line 2: path init
-        yield { type: 'line', line: 2, vars: { visited: new Set(visited), path: [...path] } };
+        yield { type: 'line', cell: { r: 0, c: 0 }, line: 2, vars: { visited: new Set(visited), path: [...path] } };
         
         // Line 18: solve(start) trigger
-        yield { type: 'line', line: 18, vars: { visited: new Set(visited), path: [...path] } };
+        yield { type: 'line', cell: { r: 0, c: 0 }, line: 18, vars: { visited: new Set(visited), path: [...path] } };
         
         function* solve(r, c) {
             const cellKey = `${r},${c}`;
             const curr = { r, c };
             
             // Line 3: function entry
-            yield { type: 'line', line: 3, vars: { curr, visited: new Set(visited), path: [...path] } };
+            yield { type: 'line', cell: curr, line: 3, vars: { curr, visited: new Set(visited), path: [...path] } };
             
             const isEnd = (r === self.rows - 1 && c === self.cols - 1);
             
             // Line 4: end check
-            yield { type: 'line', line: 4, vars: { curr, visited: new Set(visited), path: [...path] } };
+            yield { type: 'line', cell: curr, line: 4, vars: { curr, visited: new Set(visited), path: [...path] } };
             if (isEnd) {
                 // Line 5: push to path
                 path.push(curr);
@@ -642,7 +669,7 @@ class MazeApp {
             
             // Line 9: push to path
             path.push(curr);
-            yield { type: 'line', line: 9, vars: { curr, visited: new Set(visited), path: [...path] } };
+            yield { type: 'line', cell: curr, line: 9, vars: { curr, visited: new Set(visited), path: [...path] } };
             
             const cell = getCell(r, c);
             const nexts = [];
@@ -652,13 +679,13 @@ class MazeApp {
             if (!cell.walls.left && c > 0) nexts.push({ r, c: c - 1 });
             
             // Line 10: neighbors loop
-            yield { type: 'line', line: 10, vars: { curr, visited: new Set(visited), path: [...path] } };
+            yield { type: 'line', cell: curr, line: 10, vars: { curr, visited: new Set(visited), path: [...path] } };
             
             for (const next of nexts) {
                 const nextKey = `${next.r},${next.c}`;
                 
                 // Line 11: visited check
-                yield { type: 'line', line: 11, vars: { curr, next, visited: new Set(visited), path: [...path] } };
+                yield { type: 'line', cell: curr, next, line: 11, vars: { curr, next, visited: new Set(visited), path: [...path] } };
                 
                 if (!visited.has(nextKey)) {
                     // Line 12: solve(next) recursive call
@@ -673,7 +700,7 @@ class MazeApp {
             yield { type: 'dead', cell: curr, line: 15, vars: { curr, visited: new Set(visited), path: [...path] } };
             
             // Line 16: return false
-            yield { type: 'line', line: 16, vars: { curr, visited: new Set(visited), path: [...path] } };
+            yield { type: 'line', cell: curr, line: 16, vars: { curr, visited: new Set(visited), path: [...path] } };
             return false;
         }
         
@@ -764,6 +791,7 @@ class MazeApp {
         this.highlightLine(step);
         
         if (step.cell) {
+            this.currentCell = step.cell;
             const key = `${step.cell.r},${step.cell.c}`;
             if (this.statPosition) {
                 this.statPosition.textContent = `(${step.cell.r}, ${step.cell.c})`;
@@ -787,6 +815,7 @@ class MazeApp {
         }
         
         if (step.type === 'done') {
+            this.currentCell = null;
             this.completeSolving(step.path);
             return;
         }
@@ -847,6 +876,34 @@ class MazeApp {
             clearInterval(this.timerInterval);
             this.timerInterval = null;
         }
+        this.currentCell = null;
+    }
+    
+    // Reset Solver state on current maze (keeping walls)
+    resetSolver() {
+        if (this.currentState === STATES.SOLVING) {
+            this.cancelSolving();
+        }
+        
+        // Reset statistics
+        this.statVisited.textContent = '0';
+        this.statPath.textContent = '0';
+        this.statTime.textContent = '0.0s';
+        if (this.statPosition) this.statPosition.textContent = '-';
+        this.uniqueVisited.clear();
+        this.elapsedSeconds = 0;
+        this.currentCell = null;
+        
+        // Reset Solver state map
+        this.stateMap = {};
+        for (let r = 0; r < this.rows; r++) {
+            for (let c = 0; c < this.cols; c++) {
+                this.stateMap[`${r},${c}`] = 'UNVISITED';
+            }
+        }
+        
+        this.setAppState(STATES.READY);
+        this.draw();
     }
     
     // Debugger control helpers
@@ -898,6 +955,34 @@ class MazeApp {
                 pulse.style.color = 'var(--success)';
             }
         }
+    }
+
+    copyCodeToClipboard() {
+        if (!this.copyBtn) return;
+        const lines = Array.from(document.querySelectorAll('#codeEditor .line-content'))
+                           .map(el => el.textContent)
+                           .join('\n');
+                           
+        navigator.clipboard.writeText(lines).then(() => {
+            const copyIcon = this.copyBtn.querySelector('.copy-icon');
+            const checkIcon = this.copyBtn.querySelector('.check-icon');
+            
+            if (copyIcon && checkIcon) {
+                copyIcon.classList.add('hidden');
+                checkIcon.classList.remove('hidden');
+                this.copyBtn.classList.add('success');
+                this.copyBtn.setAttribute('title', 'Copied!');
+                
+                setTimeout(() => {
+                    copyIcon.classList.remove('hidden');
+                    checkIcon.classList.add('hidden');
+                    this.copyBtn.classList.remove('success');
+                    this.copyBtn.setAttribute('title', 'Copy Code');
+                }, 2000);
+            }
+        }).catch(err => {
+            console.error('Failed to copy code: ', err);
+        });
     }
     
     updateVariablesDisplay(vars) {
@@ -997,63 +1082,55 @@ class MazeApp {
         let mappedLine = lineNum;
         if (algo === 'BFS') {
             const bfsMap = {
-                1: 45,
-                2: 46,
-                3: 52,
-                4: 54,
-                5: 57,
-                6: 60,
-                8: 64,
-                9: 69,
-                10: 74,
-                11: 75,
-                12: 75,
-                15: 80
+                1: 31,
+                2: 32,
+                3: 34,
+                4: 36,
+                5: 38,
+                6: 39,
+                8: 41,
+                9: 46,
+                10: 51,
+                11: 52,
+                12: 52,
+                15: 57
             };
             mappedLine = bfsMap[lineNum] || lineNum;
         } else if (algo === 'DFS') {
             const dfsMap = {
-                1: 16,
-                2: 14,
-                3: 16,
-                4: 16,
-                5: 21,
-                6: 27,
-                7: 24,
-                8: 25,
-                10: 29,
-                11: 21,
-                12: 29,
-                13: 29,
-                16: 19
+                1: 31,
+                2: 31,
+                3: 33,
+                4: 35,
+                5: 37,
+                6: 40,
+                7: 42,
+                8: 43,
+                10: 45,
+                11: 50,
+                12: 55,
+                13: 55,
+                16: 60
             };
             mappedLine = dfsMap[lineNum] || lineNum;
         } else if (algo === 'Backtracking') {
-            if (lineNum === 12 && step.cell && step.vars && step.vars.curr) {
-                const curr = step.vars.curr;
-                const next = step.cell;
-                if (next.r > curr.r) mappedLine = 36;
-                else if (next.c > curr.c) mappedLine = 40;
-                else if (next.r < curr.r) mappedLine = 44;
-                else if (next.c < curr.c) mappedLine = 48;
-            } else {
-                const btMap = {
-                    1: 15,
-                    2: 15,
-                    18: 73,
-                    3: 22,
-                    4: 25,
-                    5: 27,
-                    6: 28,
-                    8: 33,
-                    9: 33,
-                    10: 31,
-                    11: 31,
-                    15: 52,
-                    16: 55
-                };
-                mappedLine = btMap[lineNum] || lineNum;
-            }
+            const btMap = {
+                1: 7,
+                2: 8,
+                18: 41,
+                3: 13,
+                4: 15,
+                5: 16,
+                6: 16,
+                8: 18,
+                9: 18,
+                10: 20,
+                11: 25,
+                12: 29,
+                15: 35,
+                16: 36
+            };
+            mappedLine = btMap[lineNum] || lineNum;
         }
         
         const targetLine = editor.querySelector(`.code-line[data-line="${mappedLine}"]`);
@@ -1073,222 +1150,209 @@ class MazeApp {
             lines = [
                 { num: 1, text: '<span class="code-keyword">#include</span> <span class="code-string">&lt;stdio.h&gt;</span>' },
                 { num: 2, text: '' },
-                { num: 3, text: '<span class="code-keyword">#define</span> ROWS 5' },
-                { num: 4, text: '<span class="code-keyword">#define</span> COLS 5' },
-                { num: 5, text: '<span class="code-keyword">#define</span> SIZE 100' },
+                { num: 3, text: '<span class="code-keyword">#define</span> ROWS 15' },
+                { num: 4, text: '<span class="code-keyword">#define</span> COLS 15' },
+                { num: 5, text: '<span class="code-keyword">#define</span> SIZE 1000' },
                 { num: 6, text: '' },
-                { num: 7, text: '<span class="code-comment">// Structure to store a cell position</span>' },
-                { num: 8, text: '<span class="code-keyword">typedef struct</span> {' },
-                { num: 9, text: '    <span class="code-keyword">int</span> row;' },
-                { num: 10, text: '    <span class="code-keyword">int</span> col;' },
-                { num: 11, text: '} <span class="code-var">Cell</span>;' },
-                { num: 12, text: '' },
-                { num: 13, text: 'Cell queue[SIZE];' },
-                { num: 14, text: '<span class="code-keyword">int</span> front = 0;' },
-                { num: 15, text: '<span class="code-keyword">int</span> rear = 0;' },
-                { num: 16, text: '' },
-                { num: 17, text: '<span class="code-comment">// Maze: 1 = path, 0 = blocked</span>' },
-                { num: 18, text: '<span class="code-keyword">int</span> maze[ROWS][COLS] = {' },
-                { num: 19, text: '    {1,1,0,0,0},' },
-                { num: 20, text: '    {0,1,1,0,0},' },
-                { num: 21, text: '    {0,0,1,1,0},' },
-                { num: 22, text: '    {1,0,0,1,1},' },
-                { num: 23, text: '    {0,0,0,0,1}' },
-                { num: 24, text: '};' },
-                { num: 25, text: '' },
-                { num: 26, text: '<span class="code-keyword">int</span> visited[ROWS][COLS] = {0};' },
-                { num: 27, text: '' },
-                { num: 28, text: '<span class="code-comment">// Add a cell to the queue</span>' },
-                { num: 29, text: '<span class="code-keyword">void</span> <span class="code-fn">enqueue</span>(<span class="code-keyword">int</span> row, <span class="code-keyword">int</span> col)' },
+                { num: 7, text: '<span class="code-keyword">typedef struct</span> {' },
+                { num: 8, text: '    <span class="code-keyword">int</span> row, col;' },
+                { num: 9, text: '} <span class="code-var">Position</span>;' },
+                { num: 10, text: '' },
+                { num: 11, text: '<span class="code-keyword">int</span> wall[ROWS][COLS][4];    <span class="code-comment">// 0=top, 1=right, 2=bottom, 3=left</span>' },
+                { num: 12, text: '<span class="code-keyword">int</span> visited[ROWS][COLS];' },
+                { num: 13, text: 'Position queue[SIZE];' },
+                { num: 14, text: '<span class="code-keyword">int</span> front = 0, rear = 0;' },
+                { num: 15, text: '' },
+                { num: 16, text: '<span class="code-keyword">const int</span> dr[4] = {-1, 0, 1, 0};' },
+                { num: 17, text: '<span class="code-keyword">const int</span> dc[4] = {0, 1, 0, -1};' },
+                { num: 18, text: '' },
+                { num: 19, text: '<span class="code-keyword">void</span> <span class="code-fn">enqueue</span>(<span class="code-keyword">int</span> r, <span class="code-keyword">int</span> c)' },
+                { num: 20, text: '{' },
+                { num: 21, text: '    queue[rear++] = (Position){r, c};' },
+                { num: 22, text: '}' },
+                { num: 23, text: '' },
+                { num: 24, text: 'Position <span class="code-fn">dequeue</span>(<span class="code-keyword">void</span>)' },
+                { num: 25, text: '{' },
+                { num: 26, text: '    <span class="code-keyword">return</span> queue[front++];' },
+                { num: 27, text: '}' },
+                { num: 28, text: '' },
+                { num: 29, text: '<span class="code-keyword">int</span> <span class="code-fn">findPathBFS</span>(<span class="code-keyword">void</span>)' },
                 { num: 30, text: '{' },
-                { num: 31, text: '    queue[rear].row = row;' },
-                { num: 32, text: '    queue[rear].col = col;' },
-                { num: 33, text: '    rear++;' },
-                { num: 34, text: '}' },
-                { num: 35, text: '' },
-                { num: 36, text: '<span class="code-comment">// Remove a cell from the queue</span>' },
-                { num: 37, text: 'Cell <span class="code-fn">dequeue</span>()' },
-                { num: 38, text: '{' },
-                { num: 39, text: '    <span class="code-keyword">return</span> queue[front++];' },
-                { num: 40, text: '}' },
-                { num: 41, text: '' },
-                { num: 42, text: '<span class="code-comment">// BFS function to check if a path exists</span>' },
-                { num: 43, text: '<span class="code-keyword">int</span> <span class="code-fn">findPathBFS</span>()' },
-                { num: 44, text: '{' },
-                { num: 45, text: '    <span class="code-fn">enqueue</span>(0, 0);' },
-                { num: 46, text: '    visited[0][0] = 1;' },
-                { num: 47, text: '' },
-                { num: 48, text: '    <span class="code-comment">// Possible movements: Down, Up, Right, Left</span>' },
-                { num: 49, text: '    <span class="code-keyword">int</span> rowMove[] = {1, -1, 0, 0};' },
-                { num: 50, text: '    <span class="code-keyword">int</span> colMove[] = {0, 0, 1, -1};' },
-                { num: 51, text: '' },
-                { num: 52, text: '    <span class="code-keyword">while</span> (front &lt; rear)' },
-                { num: 53, text: '    {' },
-                { num: 54, text: '        Cell current = <span class="code-fn">dequeue</span>();' },
-                { num: 55, text: '' },
-                { num: 56, text: '        <span class="code-comment">// Destination reached</span>' },
-                { num: 57, text: '        <span class="code-keyword">if</span> (current.row == ROWS - 1 &amp;&amp;' },
-                { num: 58, text: '            current.col == COLS - 1)' },
-                { num: 59, text: '        {' },
-                { num: 60, text: '            <span class="code-keyword">return</span> 1;' },
-                { num: 61, text: '        }' },
-                { num: 62, text: '' },
-                { num: 63, text: '        <span class="code-comment">// Check all 4 directions</span>' },
-                { num: 64, text: '        <span class="code-keyword">for</span> (<span class="code-keyword">int</span> i = 0; i &lt; 4; i++)' },
-                { num: 65, text: '        {' },
-                { num: 66, text: '            <span class="code-keyword">int</span> newRow = current.row + rowMove[i];' },
-                { num: 67, text: '            <span class="code-keyword">int</span> newCol = current.col + colMove[i];' },
-                { num: 68, text: '' },
-                { num: 69, text: '            <span class="code-keyword">if</span> (newRow &gt;= 0 &amp;&amp; newRow &lt; ROWS &amp;&amp;' },
-                { num: 70, text: '                newCol &gt;= 0 &amp;&amp; newCol &lt; COLS &amp;&amp;' },
-                { num: 71, text: '                maze[newRow][newCol] == 1 &amp;&amp;' },
-                { num: 72, text: '                visited[newRow][newCol] == 0)' },
-                { num: 73, text: '            {' },
-                { num: 74, text: '                visited[newRow][newCol] = 1;' },
-                { num: 75, text: '                <span class="code-fn">enqueue</span>(newRow, newCol);' },
-                { num: 76, text: '            }' },
-                { num: 77, text: '        }' },
-                { num: 78, text: '    }' },
-                { num: 79, text: '' },
-                { num: 80, text: '    <span class="code-keyword">return</span> 0; <span class="code-comment">// No path found</span>' },
-                { num: 81, text: '}' },
-                { num: 82, text: '' },
-                { num: 83, text: '<span class="code-keyword">int</span> <span class="code-fn">main</span>()' },
-                { num: 84, text: '{' },
-                { num: 85, text: '    <span class="code-keyword">if</span> (<span class="code-fn">findPathBFS</span>())' },
-                { num: 86, text: '        <span class="code-fn">printf</span>(<span class="code-string">"Path Found using BFS\\n"</span>);' },
-                { num: 87, text: '    <span class="code-keyword">else</span>' },
-                { num: 88, text: '        <span class="code-fn">printf</span>(<span class="code-string">"No Path Found\\n"</span>);' },
-                { num: 89, text: '' },
-                { num: 90, text: '    <span class="code-keyword">return</span> 0;' },
-                { num: 91, text: '}' }
+                { num: 31, text: '    <span class="code-fn">enqueue</span>(0, 0);' },
+                { num: 32, text: '    visited[0][0] = 1;' },
+                { num: 33, text: '' },
+                { num: 34, text: '    <span class="code-keyword">while</span> (front &lt; rear)' },
+                { num: 35, text: '    {' },
+                { num: 36, text: '        Position p = <span class="code-fn">dequeue</span>();' },
+                { num: 37, text: '' },
+                { num: 38, text: '        <span class="code-keyword">if</span> (p.row == ROWS - 1 &amp;&amp; p.col == COLS - 1)' },
+                { num: 39, text: '            <span class="code-keyword">return</span> 1;' },
+                { num: 40, text: '' },
+                { num: 41, text: '        <span class="code-keyword">for</span> (<span class="code-keyword">int</span> d = 0; d &lt; 4; d++)' },
+                { num: 42, text: '        {' },
+                { num: 43, text: '            <span class="code-keyword">int</span> nr = p.row + dr[d];' },
+                { num: 44, text: '            <span class="code-keyword">int</span> nc = p.col + dc[d];' },
+                { num: 45, text: '' },
+                { num: 46, text: '            <span class="code-keyword">if</span> (nr &gt;= 0 &amp;&amp; nr &lt; ROWS &amp;&amp;' },
+                { num: 47, text: '                nc &gt;= 0 &amp;&amp; nc &lt; COLS &amp;&amp;' },
+                { num: 48, text: '                !wall[p.row][p.col][d] &amp;&amp;' },
+                { num: 49, text: '                !visited[nr][nc])' },
+                { num: 50, text: '            {' },
+                { num: 51, text: '                visited[nr][nc] = 1;' },
+                { num: 52, text: '                <span class="code-fn">enqueue</span>(nr, nc);' },
+                { num: 53, text: '            }' },
+                { num: 54, text: '        }' },
+                { num: 55, text: '    }' },
+                { num: 56, text: '' },
+                { num: 57, text: '    <span class="code-keyword">return</span> 0;' },
+                { num: 58, text: '}' },
+                { num: 59, text: '' },
+                { num: 60, text: '<span class="code-keyword">int</span> <span class="code-fn">main</span>(<span class="code-keyword">void</span>)' },
+                { num: 61, text: '{' },
+                { num: 62, text: '    <span class="code-keyword">if</span> (<span class="code-fn">findPathBFS</span>())' },
+                { num: 63, text: '        <span class="code-fn">printf</span>(<span class="code-string">"Path Found using BFS\\n"</span>);' },
+                { num: 64, text: '    <span class="code-keyword">else</span>' },
+                { num: 65, text: '        <span class="code-fn">printf</span>(<span class="code-string">"No Path Found\\n"</span>);' },
+                { num: 66, text: '' },
+                { num: 67, text: '    <span class="code-keyword">return</span> 0;' },
+                { num: 68, text: '}' }
             ];
         } else if (algo === 'DFS') {
             lines = [
                 { num: 1, text: '<span class="code-keyword">#include</span> <span class="code-string">&lt;stdio.h&gt;</span>' },
                 { num: 2, text: '' },
-                { num: 3, text: '<span class="code-keyword">#define</span> ROW 5' },
-                { num: 4, text: '<span class="code-keyword">#define</span> COL 5' },
-                { num: 5, text: '' },
-                { num: 6, text: '<span class="code-keyword">int</span> maze[ROW][COL] = {' },
-                { num: 7, text: '    {1,1,0,0,0},' },
-                { num: 8, text: '    {0,1,1,0,0},' },
-                { num: 9, text: '    {0,0,1,1,0},' },
-                { num: 10, text: '    {1,0,0,1,1},' },
-                { num: 11, text: '    {0,0,0,0,1}' },
-                { num: 12, text: '};' },
-                { num: 13, text: '' },
-                { num: 14, text: '<span class="code-keyword">int</span> visited[ROW][COL];' },
+                { num: 3, text: '<span class="code-keyword">#define</span> ROWS 15' },
+                { num: 4, text: '<span class="code-keyword">#define</span> COLS 15' },
+                { num: 5, text: '<span class="code-keyword">#define</span> SIZE 1000' },
+                { num: 6, text: '' },
+                { num: 7, text: '<span class="code-keyword">typedef struct</span> {' },
+                { num: 8, text: '    <span class="code-keyword">int</span> row, col;' },
+                { num: 9, text: '} <span class="code-var">Position</span>;' },
+                { num: 10, text: '' },
+                { num: 11, text: '<span class="code-keyword">int</span> wall[ROWS][COLS][4];    <span class="code-comment">// 0=top, 1=right, 2=bottom, 3=left</span>' },
+                { num: 12, text: '<span class="code-keyword">int</span> visited[ROWS][COLS];' },
+                { num: 13, text: 'Position stack[SIZE];' },
+                { num: 14, text: '<span class="code-keyword">int</span> top = -1;' },
                 { num: 15, text: '' },
-                { num: 16, text: '<span class="code-keyword">int</span> <span class="code-fn">dfs</span>(<span class="code-keyword">int</span> x, <span class="code-keyword">int</span> y)' },
-                { num: 17, text: '{' },
-                { num: 18, text: '    <span class="code-keyword">if</span>(x&lt;0 || y&lt;0 || x&gt;=ROW || y&gt;=COL)' },
-                { num: 19, text: '        <span class="code-keyword">return</span> 0;' },
-                { num: 20, text: '' },
-                { num: 21, text: '    <span class="code-keyword">if</span>(maze[x][y]==0 || visited[x][y])' },
-                { num: 22, text: '        <span class="code-keyword">return</span> 0;' },
+                { num: 16, text: '<span class="code-keyword">const int</span> dr[4] = {-1, 0, 1, 0};' },
+                { num: 17, text: '<span class="code-keyword">const int</span> dc[4] = {0, 1, 0, -1};' },
+                { num: 18, text: '' },
+                { num: 19, text: '<span class="code-keyword">void</span> <span class="code-fn">push</span>(Position p)' },
+                { num: 20, text: '{' },
+                { num: 21, text: '    stack[++top] = p;' },
+                { num: 22, text: '}' },
                 { num: 23, text: '' },
-                { num: 24, text: '    <span class="code-keyword">if</span>(x==ROW-1 &amp;&amp; y==COL-1)' },
-                { num: 25, text: '        <span class="code-keyword">return</span> 1;' },
-                { num: 26, text: '' },
-                { num: 27, text: '    visited[x][y]=1;' },
+                { num: 24, text: 'Position <span class="code-fn">pop</span>(<span class="code-keyword">void</span>)' },
+                { num: 25, text: '{' },
+                { num: 26, text: '    <span class="code-keyword">return</span> stack[top--];' },
+                { num: 27, text: '}' },
                 { num: 28, text: '' },
-                { num: 29, text: '    <span class="code-keyword">return</span> <span class="code-fn">dfs</span>(x+1,y) ||' },
-                { num: 30, text: '           <span class="code-fn">dfs</span>(x-1,y) ||' },
-                { num: 31, text: '           <span class="code-fn">dfs</span>(x,y+1) ||' },
-                { num: 32, text: '           <span class="code-fn">dfs</span>(x,y-1);' },
-                { num: 33, text: '}' },
-                { num: 34, text: '' },
-                { num: 35, text: '<span class="code-keyword">int</span> <span class="code-fn">main</span>()' },
-                { num: 36, text: '{' },
-                { num: 37, text: '    <span class="code-keyword">if</span>(<span class="code-fn">dfs</span>(0,0))' },
-                { num: 38, text: '        <span class="code-fn">printf</span>(<span class="code-string">"Path Found using DFS\\n"</span>);' },
-                { num: 39, text: '    <span class="code-keyword">else</span>' },
-                { num: 40, text: '        <span class="code-fn">printf</span>(<span class="code-string">"No Path Found\\n"</span>);' },
+                { num: 29, text: '<span class="code-keyword">int</span> <span class="code-fn">findPathDFS</span>(<span class="code-keyword">void</span>)' },
+                { num: 30, text: '{' },
+                { num: 31, text: '    <span class="code-fn">push</span>((Position){0, 0});' },
+                { num: 32, text: '' },
+                { num: 33, text: '    <span class="code-keyword">while</span> (top &gt;= 0)' },
+                { num: 34, text: '    {' },
+                { num: 35, text: '        Position p = <span class="code-fn">pop</span>();' },
+                { num: 36, text: '' },
+                { num: 37, text: '        <span class="code-keyword">if</span> (visited[p.row][p.col])' },
+                { num: 38, text: '            <span class="code-keyword">continue</span>;' },
+                { num: 39, text: '' },
+                { num: 40, text: '        visited[p.row][p.col] = 1;' },
                 { num: 41, text: '' },
-                { num: 42, text: '    <span class="code-keyword">return</span> 0;' },
-                { num: 43, text: '}' }
+                { num: 42, text: '        <span class="code-keyword">if</span> (p.row == ROWS - 1 &amp;&amp; p.col == COLS - 1)' },
+                { num: 43, text: '            <span class="code-keyword">return</span> 1;' },
+                { num: 44, text: '' },
+                { num: 45, text: '        <span class="code-keyword">for</span> (<span class="code-keyword">int</span> d = 0; d &lt; 4; d++)' },
+                { num: 46, text: '        {' },
+                { num: 47, text: '            <span class="code-keyword">int</span> nr = p.row + dr[d];' },
+                { num: 48, text: '            <span class="code-keyword">int</span> nc = p.col + dc[d];' },
+                { num: 49, text: '' },
+                { num: 50, text: '            <span class="code-keyword">if</span> (nr &gt;= 0 &amp;&amp; nr &lt; ROWS &amp;&amp;' },
+                { num: 51, text: '                nc &gt;= 0 &amp;&amp; nc &lt; COLS &amp;&amp;' },
+                { num: 52, text: '                !wall[p.row][p.col][d] &amp;&amp;' },
+                { num: 53, text: '                !visited[nr][nc])' },
+                { num: 54, text: '            {' },
+                { num: 55, text: '                <span class="code-fn">push</span>((Position){nr, nc});' },
+                { num: 56, text: '            }' },
+                { num: 57, text: '        }' },
+                { num: 58, text: '    }' },
+                { num: 59, text: '' },
+                { num: 60, text: '    <span class="code-keyword">return</span> 0;' },
+                { num: 61, text: '}' },
+                { num: 62, text: '' },
+                { num: 63, text: '<span class="code-keyword">int</span> <span class="code-fn">main</span>(<span class="code-keyword">void</span>)' },
+                { num: 64, text: '{' },
+                { num: 65, text: '    <span class="code-comment">/* Example: all walls are open (0) by default,' },
+                { num: 66, text: '       so a path exists from (0,0) to (14,14). */</span>' },
+                { num: 67, text: '' },
+                { num: 68, text: '    <span class="code-keyword">if</span> (<span class="code-fn">findPathDFS</span>())' },
+                { num: 69, text: '        <span class="code-fn">printf</span>(<span class="code-string">"Path Found using DFS\\n"</span>);' },
+                { num: 70, text: '    <span class="code-keyword">else</span>' },
+                { num: 71, text: '        <span class="code-fn">printf</span>(<span class="code-string">"No Path Found\\n"</span>);' },
+                { num: 72, text: '' },
+                { num: 73, text: '    <span class="code-keyword">return</span> 0;' },
+                { num: 74, text: '}' }
             ];
         } else if (algo === 'Backtracking') {
             lines = [
                 { num: 1, text: '<span class="code-keyword">#include</span> <span class="code-string">&lt;stdio.h&gt;</span>' },
                 { num: 2, text: '' },
-                { num: 3, text: '<span class="code-keyword">#define</span> SIZE 5' },
-                { num: 4, text: '' },
-                { num: 5, text: '<span class="code-comment">// Maze: 1 = path, 0 = blocked</span>' },
-                { num: 6, text: '<span class="code-keyword">int</span> maze[SIZE][SIZE] = {' },
-                { num: 7, text: '    {1,1,0,0,0},' },
-                { num: 8, text: '    {0,1,1,0,0},' },
-                { num: 9, text: '    {0,0,1,1,0},' },
-                { num: 10, text: '    {1,0,0,1,1},' },
-                { num: 11, text: '    {0,0,0,0,1}' },
-                { num: 12, text: '};' },
-                { num: 13, text: '' },
-                { num: 14, text: '<span class="code-comment">// Stores the solution path</span>' },
-                { num: 15, text: '<span class="code-keyword">int</span> solution[SIZE][SIZE];' },
-                { num: 16, text: '' },
-                { num: 17, text: '<span class="code-keyword">int</span> <span class="code-fn">isSafe</span>(<span class="code-keyword">int</span> row, <span class="code-keyword">int</span> col)' },
-                { num: 18, text: '{' },
-                { num: 19, text: '    <span class="code-keyword">return</span> (row &gt;= 0 &amp;&amp; col &gt;= 0 &amp;&amp; row &lt; SIZE &amp;&amp; col &lt; SIZE &amp;&amp; maze[row][col] == 1);' },
-                { num: 20, text: '}' },
-                { num: 21, text: '' },
-                { num: 22, text: '<span class="code-keyword">int</span> <span class="code-fn">solveMaze</span>(<span class="code-keyword">int</span> row, <span class="code-keyword">int</span> col)' },
-                { num: 23, text: '{' },
-                { num: 24, text: '    <span class="code-comment">// Destination reached</span>' },
-                { num: 25, text: '    <span class="code-keyword">if</span> (row == SIZE - 1 &amp;&amp; col == SIZE - 1)' },
-                { num: 26, text: '    {' },
-                { num: 27, text: '        solution[row][col] = 1;' },
-                { num: 28, text: '        <span class="code-keyword">return</span> 1;' },
-                { num: 29, text: '    }' },
-                { num: 30, text: '' },
-                { num: 31, text: '    <span class="code-keyword">if</span> (<span class="code-fn">isSafe</span>(row, col))' },
-                { num: 32, text: '    {' },
-                { num: 33, text: '        solution[row][col] = 1;' },
+                { num: 3, text: '<span class="code-keyword">#define</span> ROWS 15' },
+                { num: 4, text: '<span class="code-keyword">#define</span> COLS 15' },
+                { num: 5, text: '' },
+                { num: 6, text: '<span class="code-keyword">int</span> wall[ROWS][COLS][4];      <span class="code-comment">// 0=top,1=right,2=bottom,3=left</span>' },
+                { num: 7, text: '<span class="code-keyword">int</span> visited[ROWS][COLS];' },
+                { num: 8, text: '<span class="code-keyword">int</span> solution[ROWS][COLS];' },
+                { num: 9, text: '' },
+                { num: 10, text: '<span class="code-keyword">const int</span> dr[4] = {-1, 0, 1, 0};' },
+                { num: 11, text: '<span class="code-keyword">const int</span> dc[4] = {0, 1, 0, -1};' },
+                { num: 12, text: '' },
+                { num: 13, text: '<span class="code-keyword">int</span> <span class="code-fn">solveMaze</span>(<span class="code-keyword">int</span> r, <span class="code-keyword">int</span> c)' },
+                { num: 14, text: '{' },
+                { num: 15, text: '    <span class="code-keyword">if</span> (r == ROWS - 1 &amp;&amp; c == COLS - 1)' },
+                { num: 16, text: '        <span class="code-keyword">return</span> solution[r][c] = 1;' },
+                { num: 17, text: '' },
+                { num: 18, text: '    visited[r][c] = solution[r][c] = 1;' },
+                { num: 19, text: '' },
+                { num: 20, text: '    <span class="code-keyword">for</span> (<span class="code-keyword">int</span> d = 0; d &lt; 4; d++)' },
+                { num: 21, text: '    {' },
+                { num: 22, text: '        <span class="code-keyword">int</span> nr = r + dr[d];' },
+                { num: 23, text: '        <span class="code-keyword">int</span> nc = c + dc[d];' },
+                { num: 24, text: '' },
+                { num: 25, text: '        <span class="code-keyword">if</span> (nr &gt;= 0 &amp;&amp; nr &lt; ROWS &amp;&amp;' },
+                { num: 26, text: '            nc &gt;= 0 &amp;&amp; nc &lt; COLS &amp;&amp;' },
+                { num: 27, text: '            !wall[r][c][d] &amp;&amp;' },
+                { num: 28, text: '            !visited[nr][nc] &amp;&amp;' },
+                { num: 29, text: '            <span class="code-fn">solveMaze</span>(nr, nc))' },
+                { num: 30, text: '        {' },
+                { num: 31, text: '            <span class="code-keyword">return</span> 1;' },
+                { num: 32, text: '        }' },
+                { num: 33, text: '    }' },
                 { num: 34, text: '' },
-                { num: 35, text: '        <span class="code-comment">// Move Down</span>' },
-                { num: 36, text: '        <span class="code-keyword">if</span> (<span class="code-fn">solveMaze</span>(row + 1, col))' },
-                { num: 37, text: '            <span class="code-keyword">return</span> 1;' },
+                { num: 35, text: '    solution[r][c] = 0;' },
+                { num: 36, text: '    <span class="code-keyword">return</span> 0;' },
+                { num: 37, text: '}' },
                 { num: 38, text: '' },
-                { num: 39, text: '        <span class="code-comment">// Move Right</span>' },
-                { num: 40, text: '        <span class="code-keyword">if</span> (<span class="code-fn">solveMaze</span>(row, col + 1))' },
-                { num: 41, text: '            <span class="code-keyword">return</span> 1;' },
-                { num: 42, text: '' },
-                { num: 43, text: '        <span class="code-comment">// Move Up</span>' },
-                { num: 44, text: '        <span class="code-keyword">if</span> (<span class="code-fn">solveMaze</span>(row - 1, col))' },
-                { num: 45, text: '            <span class="code-keyword">return</span> 1;' },
-                { num: 46, text: '' },
-                { num: 47, text: '        <span class="code-comment">// Move Left</span>' },
-                { num: 48, text: '        <span class="code-keyword">if</span> (<span class="code-fn">solveMaze</span>(row, col - 1))' },
-                { num: 49, text: '            <span class="code-keyword">return</span> 1;' },
-                { num: 50, text: '' },
-                { num: 51, text: '        <span class="code-comment">// Backtrack</span>' },
-                { num: 52, text: '        solution[row][col] = 0;' },
-                { num: 53, text: '    }' },
-                { num: 54, text: '' },
-                { num: 55, text: '    <span class="code-keyword">return</span> 0;' },
-                { num: 56, text: '}' },
-                { num: 57, text: '' },
-                { num: 58, text: '<span class="code-keyword">void</span> <span class="code-fn">printSolution</span>()' },
-                { num: 59, text: '{' },
-                { num: 60, text: '    <span class="code-fn">printf</span>(<span class="code-string">"Solution Path:\\n"</span>);' },
-                { num: 61, text: '    <span class="code-keyword">for</span> (<span class="code-keyword">int</span> row = 0; row &lt; SIZE; row++)' },
-                { num: 62, text: '    {' },
-                { num: 63, text: '        <span class="code-keyword">for</span> (<span class="code-keyword">int</span> col = 0; col &lt; SIZE; col++)' },
-                { num: 64, text: '        {' },
-                { num: 65, text: '            <span class="code-fn">printf</span>(<span class="code-string">"%d "</span>, solution[row][col]);' },
-                { num: 66, text: '        }' },
-                { num: 67, text: '        <span class="code-fn">printf</span>(<span class="code-string">"\\n"</span>);' },
-                { num: 68, text: '    }' },
-                { num: 69, text: '}' },
-                { num: 70, text: '' },
-                { num: 71, text: '<span class="code-keyword">int</span> <span class="code-fn">main</span>()' },
-                { num: 72, text: '{' },
-                { num: 73, text: '    <span class="code-keyword">if</span> (<span class="code-fn">solveMaze</span>(0, 0))' },
-                { num: 74, text: '        <span class="code-fn">printSolution</span>();' },
-                { num: 75, text: '    <span class="code-keyword">else</span>' },
-                { num: 76, text: '        <span class="code-fn">printf</span>(<span class="code-string">"No Solution Exists\\n"</span>);' },
-                { num: 77, text: '    <span class="code-keyword">return</span> 0;' },
-                { num: 78, text: '}' }
+                { num: 39, text: '<span class="code-keyword">int</span> <span class="code-fn">main</span>(<span class="code-keyword">void</span>)' },
+                { num: 40, text: '{' },
+                { num: 41, text: '    <span class="code-keyword">if</span> (<span class="code-fn">solveMaze</span>(0, 0))' },
+                { num: 42, text: '    {' },
+                { num: 43, text: '        <span class="code-keyword">for</span> (<span class="code-keyword">int</span> r = 0; r &lt; ROWS; r++)' },
+                { num: 44, text: '        {' },
+                { num: 45, text: '            <span class="code-keyword">for</span> (<span class="code-keyword">int</span> c = 0; c &lt; COLS; c++)' },
+                { num: 46, text: '                <span class="code-fn">printf</span>(<span class="code-string">"%d "</span>, solution[r][c]);' },
+                { num: 47, text: '' },
+                { num: 48, text: '            <span class="code-fn">printf</span>(<span class="code-string">"\\n"</span>);' },
+                { num: 49, text: '        }' },
+                { num: 50, text: '    }' },
+                { num: 51, text: '    <span class="code-keyword">else</span>' },
+                { num: 52, text: '    {' },
+                { num: 53, text: '        <span class="code-fn">printf</span>(<span class="code-string">"No Solution Exists\\n"</span>);' },
+                { num: 54, text: '    }' },
+                { num: 55, text: '' },
+                { num: 56, text: '    <span class="code-keyword">return</span> 0;' },
+                { num: 57, text: '}' }
             ];
         }
         

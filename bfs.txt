@@ -1,0 +1,68 @@
+#include <stdio.h>
+
+#define ROWS 15
+#define COLS 15
+#define SIZE 1000
+
+typedef struct {
+    int row, col;
+} Position;
+
+int wall[ROWS][COLS][4];    // 0=top, 1=right, 2=bottom, 3=left
+int visited[ROWS][COLS];
+Position queue[SIZE];
+int front = 0, rear = 0;
+
+const int dr[4] = {-1, 0, 1, 0};
+const int dc[4] = {0, 1, 0, -1};
+
+void enqueue(int r, int c)
+{
+    queue[rear++] = (Position){r, c};
+}
+
+Position dequeue(void)
+{
+    return queue[front++];
+}
+
+int findPathBFS(void)
+{
+    enqueue(0, 0);
+    visited[0][0] = 1;
+
+    while (front < rear)
+    {
+        Position p = dequeue();
+
+        if (p.row == ROWS - 1 && p.col == COLS - 1)
+            return 1;
+
+        for (int d = 0; d < 4; d++)
+        {
+            int nr = p.row + dr[d];
+            int nc = p.col + dc[d];
+
+            if (nr >= 0 && nr < ROWS &&
+                nc >= 0 && nc < COLS &&
+                !wall[p.row][p.col][d] &&
+                !visited[nr][nc])
+            {
+                visited[nr][nc] = 1;
+                enqueue(nr, nc);
+            }
+        }
+    }
+
+    return 0;
+}
+
+int main(void)
+{
+    if (findPathBFS())
+        printf("Path Found using BFS\n");
+    else
+        printf("No Path Found\n");
+
+    return 0;
+}

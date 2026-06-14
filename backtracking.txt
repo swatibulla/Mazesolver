@@ -1,0 +1,57 @@
+#include <stdio.h>
+
+#define ROWS 15
+#define COLS 15
+
+int wall[ROWS][COLS][4];      // 0=top,1=right,2=bottom,3=left
+int visited[ROWS][COLS];
+int solution[ROWS][COLS];
+
+const int dr[4] = {-1, 0, 1, 0};
+const int dc[4] = {0, 1, 0, -1};
+
+int solveMaze(int r, int c)
+{
+    if (r == ROWS - 1 && c == COLS - 1)
+        return solution[r][c] = 1;
+
+    visited[r][c] = solution[r][c] = 1;
+
+    for (int d = 0; d < 4; d++)
+    {
+        int nr = r + dr[d];
+        int nc = c + dc[d];
+
+        if (nr >= 0 && nr < ROWS &&
+            nc >= 0 && nc < COLS &&
+            !wall[r][c][d] &&
+            !visited[nr][nc] &&
+            solveMaze(nr, nc))
+        {
+            return 1;
+        }
+    }
+
+    solution[r][c] = 0;
+    return 0;
+}
+
+int main(void)
+{
+    if (solveMaze(0, 0))
+    {
+        for (int r = 0; r < ROWS; r++)
+        {
+            for (int c = 0; c < COLS; c++)
+                printf("%d ", solution[r][c]);
+
+            printf("\n");
+        }
+    }
+    else
+    {
+        printf("No Solution Exists\n");
+    }
+
+    return 0;
+}
